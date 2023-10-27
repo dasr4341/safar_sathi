@@ -8,13 +8,12 @@ export const userServices = {
       .save()
       .then((user) => user.toObject())
       .catch((e) => {
-        console.error("Found err", e);
+        console.error("Found err - while creating user", e);
         return e;
       }),
-  getAllUsers: async () => await UserModel.find(),
+  getAllUsers: () => UserModel.find(),
   getUserById: (id: string) => UserModel.findById(id),
   getUserByEmail : (email: string) => UserModel.findOne({ email }),
-  // getUserByEmail: (email: string) => UserModel.findOne({ email }),
   getUserBySessionToken: (sessionToken: string) =>
     UserModel.findOne({ "authentication.sessionToken": sessionToken }),
   deleteUsersById: (id: string) => UserModel.findOneAndDelete({ _id: id }),

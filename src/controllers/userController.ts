@@ -1,47 +1,24 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction, response } from 'express';
 import { userServices } from '../services/userServices.js';
 import { authentication, random } from '../helper/authentication.helper.js';
+import { Exception } from '../exception/Exception.js';
+import { StatusCodes } from 'http-status-codes';
+import { messageData } from '../config/message.js';
+import { responseLib } from '../lib/response.lib.js';
+import { config } from '../config/config.js';
 
-// export const register = (req:Request, res: Response ) => {
-//     try {
-//         const { password, name, email } = req.body;
-//         if (!password || !name || !email) {
-//             return res.status(500).json({ error: 'invalid params' }).end();
-//         }
-//         const userExist = userServices.getUserByEmail(email);
-//         if (userExist) {
-//             return res.status(500).json({ error: 'userExist' }).end();
-//         }
-//         const salt = random();
-//         const newUser = userServices.createUser({
-//             email,
-//             name,
-//             authentication: {
-//                 salt,
-//                 password: authentication(salt, password),
-//             }
-//         });
-        
-//         return res.status(200).json(newUser).end();
-
-//     } catch (error) {
-//         return res.status(500).json({ error: 'kjsdnjvk' }).end();  
-//     }
-// }
-
-
-export const register = async (req: Request, res: Response) => {
+export const register = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email, password, name } = req.body;
   
       if (!email || !password || !name) {
-        return res.sendStatus(400);
+        throw new Exception(messageData.invalidData, {}, StatusCodes.BAD_REQUEST);
       }
   
       const existingUser = await userServices.getUserByEmail(email);
     
       if (existingUser) {
-        return res.sendStatus(400);
+        throw new Exception(messageData.userExist, { existingUser }, StatusCodes.BAD_REQUEST);
       }
   
       const salt = random();
@@ -54,19 +31,82 @@ export const register = async (req: Request, res: Response) => {
         },
       });
   
-      return res.status(200).json(user).end();
+     responseLib.success(res, { status: StatusCodes.OK, message: messageData.registeredSuccessfully, data: user  })
     } catch (error) {
-      console.log(error);
-      return res.sendStatus(400);
+      if (error instanceof Exception) {
+        next(error);
+        return;
+      }
+      throw new Exception(error.message, { error }, StatusCodes.INTERNAL_SERVER_ERROR);
     }
 }
   
-export const getAllUser = async (req: Request, res: Response) => { 
+export const getAllUser = async (req: Request, res: Response, next: NextFunction) => { 
     try {
         const users = await userServices.getAllUsers();
-        return res.status(200).json({ data: users });
+        responseLib.success(res, { status: StatusCodes.OK, message: messageData.allUserData, data: users  })
     } catch (error) {
-        return res.status(500).json({ error }).end();   
+      if (error instanceof Exception) {
+        next(error);
+        return;
+      }
+      throw new Exception(error.message, { error }, StatusCodes.INTERNAL_SERVER_ERROR);
     }   
+}
+
+export const getSingleUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id:userId } = req.params;
+    const userData = await userServices.getUserById(userId); 
+    if (!userData?._id) {
+      throw new Exception(messageData.userNotFound, { user: userData }, StatusCodes.BAD_REQUEST)
+    }
+    return responseLib.success(res, { status: StatusCodes.ACCEPTED, message: messageData.fetchedDataSuccessfully, data: { user: userData }})
+  } catch (error) {
+    next(error);
+  }
+}
+
+export const login = async (req: Request, res: Response, next: NextFunction) => {
+  try { 
+    const { email, password } = req.body;
+    if (!email || !password) {
+      throw new Exception(messageData.invalidData, {}, StatusCodes.BAD_REQUEST);
+    }
+    const userExist = await userServices.getUserByEmail(email).select('+authentication.password +authentication.salt');
+
+    if (!userExist._id) {
+      throw new Exception(messageData.userNotFound, {}, StatusCodes.BAD_REQUEST);
+    }
+
+    const expectedHash = authentication(userExist.authentication.salt, password);
+    
+    if (expectedHash === userExist.authentication.password) {
+      const newSlat = random();
+      userExist.authentication.sessionToken = newSlat;
+      await userExist.save();
+
+      res.cookie(config.sessionToken, newSlat, { domain: 'localhost', path: '/' });
+      responseLib.success(res, { status: StatusCodes.OK,  message: messageData.loggedInSuccessfully, data: { sessionToken: newSlat }, } );
+      return;
+    }
+
+    throw new Exception(messageData.wrongPassword, {}, StatusCodes.INTERNAL_SERVER_ERROR);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
+  try { 
+    const { id } = req.params;
+    const deleteRes = await userServices.deleteUsersById(id);
+    if (!deleteRes?._id) {
+      throw new Exception(messageData.userNotFound, { user: deleteRes }, StatusCodes.BAD_REQUEST)
+    }
+    return responseLib.success(res, { status: StatusCodes.ACCEPTED, message: messageData.userDeleted, data: { user: deleteRes }})
+  } catch (error) {
+    next(error);
+  }
 }
 

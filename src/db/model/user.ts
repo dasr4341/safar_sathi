@@ -28,4 +28,4 @@ const userSchema = new Schema<UserSchemaInterface>({
 });
 
 // Create a Model.
-export const UserModel = model<UserSchemaInterface>("User", userSchema);
+export const UserModel = model<UserSchemaInterface>('User', userSchema);
